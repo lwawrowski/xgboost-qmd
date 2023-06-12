@@ -1,0 +1,112 @@
+---
+title: "XGB"
+format: docx
+editor: visual
+execute: 
+  echo: false
+  message: false
+  warning: false
+params:
+  d_number: 1
+---
+
+```{r}
+library(tidyverse)
+library(reticulate)
+library(glue)
+```
+
+```{python}
+import xgboost as xgb
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import GridSearchCV
+```
+
+
+```{r}
+# d_number <- 1
+
+d_train <- read_delim(glue("data/{params$d_number}/trnSet.csv"), delim = ";") %>% 
+  janitor::clean_names() %>% 
+  mutate(class=class-1)
+d_test <- read_delim(glue("data/{params$d_number}/tstSet.csv"), delim = ";") %>% 
+  janitor::clean_names() %>% 
+  mutate(class=class-1)
+
+```
+
+## Parametry modelu
+
+```{python}
+x_train = r.d_train.drop(columns=["class"])
+y_train = r.d_train["class"]
+
+# grid = {
+#     'max_depth': range(2, 10, 2),
+#     'n_estimators': range(100, 500, 100),
+#     'learning_rate': [0.1, 0.01, 0.05],
+#     'random_state': [18]
+# }
+# print(grid)
+
+```
+
+```{python}
+# model = GridSearchCV(estimator=xgb.XGBClassifier(), 
+#                   param_grid=grid, cv=5)
+model=xgb.XGBClassifier()
+model.fit(x_train, y_train)
+
+print(model.get_params())
+```
+
+```{python}
+x_test = r.d_test.drop(columns=["class"])
+
+pred_train = model.predict(x_train)
+pred_test = model.predict(x_test)
+```
+
+```{r}
+pred_train = as.numeric(py$pred_train)
+pred_test = as.numeric(py$pred_test)
+```
+
+## Zbiór treningowy
+
+```{r}
+levels_labels = c("epithelium", "cancer", "tissue")
+
+caret::confusionMatrix(data = factor(pred_train, levels = 0:2, labels = levels_labels), 
+                       reference = factor(d_train$class, levels = 0:2, labels = levels_labels),
+                       positive = "cancer",
+                       mode = "everything")
+```
+
+## Zbiór testowy
+
+```{r}
+levels_labels = c("epithelium", "cancer", "tissue")
+
+caret::confusionMatrix(data = factor(pred_test, levels = 0:2, labels = levels_labels), 
+                       reference = factor(d_test$class, levels = 0:2, labels = levels_labels),
+                       positive = "cancer",
+                       mode = "everything")
+```
+
+```{r}
+d_train <- d_train %>% 
+  mutate(class=class+1,
+         pred=pred_train+1)
+
+d_test <- d_test %>% 
+  mutate(class=class+1,
+         pred=pred_test+1)
+
+write_csv(d_train, glue("results/{params$d_number}/trnSet_pred.csv"))
+write_csv(d_test, glue("results/{params$d_number}/tstSet_pred.csv"))
+```
+
+
+
